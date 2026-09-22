@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>조합원 투표 연명부</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    margin: 0; background: #eef1f6; color: #1a1a1a;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 18px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #888; font-size: 12.5px; margin-bottom: 18px; }
+
+  .panel { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .controls input[type="text"], .controls input[type="password"], .controls select,
+  input, select {
+    padding: 9px; border: 1px solid #d5d9e0; border-radius: 7px; font-size: 13px;
+  }
+  #voteName { flex: 1; min-width: 200px; }
+
+  button { border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; cursor: pointer; background: #2f4f8f; color: #fff; font-weight: 700; }
+  button.secondary { background: #fff; color: #333; border: 1px solid #d5d9e0; font-weight: 400; }
+  button.ghost { background: #fff; color: #2f4f8f; border: 1px solid #2f4f8f; font-weight: 700; }
+  button.danger { background: #fdeaea; color: #c62828; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13px; white-space: nowrap; }
+  th, td { padding: 9px 12px; border-bottom: 1px solid #edf0f4; text-align: left; }
+  th { background: #2f4f8f; color: #fff; font-weight: 600; position: sticky; top: 0; }
+  tr:hover td { background: #f7f9fc; }
+
+  .memberTable { max-height: 400px; overflow: auto; display: block; border-radius: 8px; }
+  .memberTable table { display: table; }
+
+  .count-badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; background: #e6f4ea; color: #1a7f37; font-weight: 700; margin-left: 8px; }
+  .hint-box { padding: 30px 10px; text-align: center; color: #999; font-size: 12.5px; }
+
+  #rosterArea { display: none; }
+  .roster-title { text-align: center; font-size: 18px; font-weight: 700; margin-bottom: 4px; color: #2f4f8f; }
+  .roster-meta { text-align: right; font-size: 12px; color: #888; margin-bottom: 10px; }
+  .sign-col { width: 90px; }
+  .rosterScroll { overflow-x: auto; }
+
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .loading { font-size: 13px; color: #999; }
+  .error-box { background: #fdeaea; border-radius: 8px; color: #c62828; padding: 10px 14px; font-size: 12.5px; margin-bottom: 16px; white-space: pre-wrap; }
+  .ok-box { background: #e6f4ea; border-radius: 8px; color: #1a7f37; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; }
+  .adminToggle { font-size: 12px; color: #2f4f8f; cursor: pointer; text-decoration: underline; }
+  #adminPanel { display: none; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #d5d9e0; border-top-color: #2f4f8f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 로그인 화면 */
+  #loginScreen { display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+  #loginScreen .card { width: 420px; max-width: 100%; background: #fff; border-radius: 12px; padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  #loginScreen label { display: block; font-size: 12px; font-weight: 700; color: #444; margin: 12px 0 4px; }
+  #loginScreen input { width: 100%; }
+  #loginScreen .note { background: #fff8e8; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #8a5a00; margin-top: 14px; line-height: 1.6; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .no-print { display: none !important; }
+    #rosterArea { display: block !important; }
+    #rosterPanel { border: none; box-shadow: none; padding: 0; }
+    table { font-size: 11px; }
+    th { background: #eee !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 로그인 화면 ============ -->
+<div id="loginScreen">
+  <div class="card">
+    <div style="font-weight:700; font-size:17px; margin-bottom:4px;">🗳️ 조합원 투표 연명부</div>
+    <div class="sub" style="margin-bottom:4px;">GitHub 저장소 연결 정보를 입력하세요. (최초 1회만 입력하면 브라우저에 저장됩니다)</div>
+    <div id="loginError"></div>
+
+    <label>GitHub 계정/조직명 (owner)</label>
+    <input type="text" id="cfgOwner" placeholder="예: myunion">
+
+    <label>저장소 이름 (repo)</label>
+    <input type="text" id="cfgRepo" placeholder="예: vote-roster-db">
+
+    <label>브랜치</label>
+    <input type="text" id="cfgBranch" placeholder="main" value="main">
+
+    <label>Personal Access Token (PAT)</label>
+    <input type="password" id="cfgToken" placeholder="ghp_로 시작하는 토큰">
+
+    <div class="actions">
+      <button style="flex:1;" onclick="handleLogin()">연결하기</button>
+    </div>
+    <div class="note">
+      · PAT은 이 브라우저의 localStorage에만 저장되며, 코드에는 포함되지 않습니다.<br>
+      · repo 권한(비공개 저장소면 repo, 공개 저장소면 public_repo)이 있는 토큰이 필요합니다.<br>
+      · 다른 컴퓨터/브라우저에서 접속하면 다시 입력해야 합니다.
+    </div>
+  </div>
+</div>
+
+<!-- ============ 메인 화면 ============ -->
+<div id="mainScreen" style="display:none;">
+<div style="background:#fff; border-bottom:1px solid #e5e8ee;">
+  <div class="wrap no-print" style="display:flex; justify-content:space-between; align-items:center; padding-top:14px; padding-bottom:14px;">
+    <div>
+      <div style="font-weight:700; font-size:16px;">🗳️ 조합원 투표 연명부</div>
+      <div class="sub" style="margin-bottom:0;">투표 대상자를 선택하고 연명부를 생성·인쇄·다운로드하세요.</div>
+    </div>
+    <div style="text-align:right;">
+      <span id="repoLabel" class="count-badge"></span><br>
+      <span class="adminToggle" onclick="toggleAdmin()">관리자 메뉴</span>
+      &nbsp;|&nbsp;
+      <span class="adminToggle" onclick="logout()">로그아웃</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="globalError"></div>
+  <div id="globalOk"></div>
+
+  <!-- 관리자 메뉴: 엑셀 업로드/다운로드 -->
+  <div class="panel no-print" id="adminPanel">
+    <div class="controls">
+      <div>
+        <div style="font-size:13px; margin-bottom:6px; color:#444;">① 엑셀로 명단 전체 교체 (헤더에 사업부/소속/부서/사번/이름/근무지/재직구분/투표장소/투표구 포함 필요)</div>
+        <input type="file" id="excelUploadInput" accept=".xlsx,.xls">
+        <button class="secondary" id="excelUploadBtn" onclick="handleExcelUpload()">업로드 및 저장소에 반영</button>
+      </div>
+    </div>
+    <div class="controls">
+      <div>
+        <div style="font-size:13px; margin-bottom:6px; color:#444;">② 현재 필터 결과를 엑셀로 다운로드</div>
+        <button class="secondary" onclick="downloadFilteredExcel()">엑셀 다운로드</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 필터/검색 -->
+  <div class="panel no-print">
+    <div class="controls">
+      <input type="text" id="searchBox" placeholder="이름 검색" oninput="renderMembers()">
+      <select id="bizFilter" onchange="renderMembers()"><option value="">전체 사업부</option></select>
+      <select id="affFilter" onchange="renderMembers()"><option value="">전체 소속</option></select>
+      <select id="deptFilter" onchange="renderMembers()"><option value="">전체 부서</option></select>
+    </div>
+    <div class="controls">
+      <select id="workplaceFilter" onchange="renderMembers()"><option value="">전체 근무지</option></select>
+      <select id="statusFilter" onchange="renderMembers()"><option value="">전체 재직구분</option></select>
+      <select id="locationFilter" onchange="renderMembers()"><option value="">전체 투표장소</option></select>
+      <select id="districtFilter" onchange="renderMembers()"><option value="">전체 투표구</option></select>
+    </div>
+    <div class="controls">
+      <button class="secondary" onclick="selectAllVisible(true)">보이는 인원 전체선택</button>
+      <button class="secondary" onclick="selectAllVisible(false)">선택 해제</button>
+      <button class="secondary" id="showAllBtn" onclick="forceShowAll()">전체 인원 표시 (느릴 수 있음)</button>
+      <span id="selCount" class="count-badge">선택 0명</span>
+    </div>
+
+    <div class="memberTable">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px;"></th>
+            <th>이름</th><th>사업부</th><th>소속</th><th>부서</th><th>사번</th>
+            <th>근무지</th><th>재직구분</th><th>투표장소</th><th>투표구</th>
+          </tr>
+        </thead>
+        <tbody id="memberBody"><tr><td colspan="10" class="loading">명단을 불러오는 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 연명부 생성 -->
+  <div class="panel no-print">
+    <div class="controls">
+      <input type="text" id="voteName" placeholder="투표명 (예: 2026년 의견일치안 찬반투표)">
+      <button onclick="buildRoster()">연명부 생성</button>
+    </div>
+  </div>
+
+  <!-- 연명부 미리보기 -->
+  <div class="panel" id="rosterPanel">
+    <div id="rosterArea">
+      <div class="roster-title" id="rosterTitle"></div>
+      <div class="roster-meta" id="rosterMeta"></div>
+      <div class="rosterScroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:50px;">번호</th><th>이름</th><th>사업부</th><th>소속</th><th>부서</th>
+              <th>근무지</th><th>재직구분</th><th>투표장소</th><th>투표구</th><th class="sign-col">서명</th>
+            </tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <div class="actions no-print">
+        <button onclick="printRoster()">인쇄하기</button>
+        <button class="ghost" id="pdfBtn" onclick="downloadPdf()">PDF 다운로드</button>
+        <button class="secondary" id="historyBtn" onclick="saveHistory()">이력 저장(GitHub)</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+/* ===================== 설정 / 로그인 ===================== */
+const LS_KEY = 'vote_roster_gh_config';
+
+function loadConfig() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); }
+  catch (e) { return null; }
+}
+function saveConfig(cfg) { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+function clearConfig() { localStorage.removeItem(LS_KEY); }
+
+let CFG = null;
+
+function handleLogin() {
+  const owner = document.getElementById('cfgOwner').value.trim();
+  const repo = document.getElementById('cfgRepo').value.trim();
+  const branch = document.getElementById('cfgBranch').value.trim() || 'main';
+  const token = document.getElementById('cfgToken').value.trim();
+
+  document.getElementById('loginError').innerHTML = '';
+  if (!owner || !repo || !token) {
+    document.getElementById('loginError').innerHTML = '<div class="error-box">계정/저장소/토큰을 모두 입력해 주세요.</div>';
+    return;
+  }
+  CFG = { owner, repo, branch, token };
+  saveConfig(CFG);
+  startApp();
+}
+
+function logout() {
+  clearConfig();
+  location.reload();
+}
+
+/* ===================== GitHub Contents API 헬퍼 ===================== */
+function ghApiBase() {
+  return 'https://api.github.com/repos/' + CFG.owner + '/' + CFG.repo + '/contents/';
+}
+
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function base64ToUtf8(b64) {
+  return decodeURIComponent(escape(atob(b64.replace(/\n/g, ''))));
+}
+
+// 대용량 파일도 읽을 수 있도록 raw 형식으로 GET (텍스트 그대로 반환)
+async function ghGetRaw(path) {
+  const url = ghApiBase() + path + '?ref=' + encodeURIComponent(CFG.branch);
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': 'token ' + CFG.token,
+      'Accept': 'application/vnd.github.raw'
+    }
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('GitHub 읽기 실패 (' + res.status + '): ' + path + '\n' + t);
+  }
+  return res.text();
+}
+
+// 파일의 sha만 필요할 때 (내용은 생략, object 미디어 타입 사용 - 대용량도 가능)
+async function ghGetSha(path) {
+  const url = ghApiBase() + path + '?ref=' + encodeURIComponent(CFG.branch);
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': 'token ' + CFG.token,
+      'Accept': 'application/vnd.github.object+json'
+    }
+  });
+  if (res.status === 404) return null; // 파일이 아직 없음
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('GitHub sha 조회 실패 (' + res.status + '): ' + path + '\n' + t);
+  }
+  const j = await res.json();
+  return j.sha;
+}
+
+// 작은 JSON 파일을 읽어서 { data, sha } 형태로 반환 (history.json 등)
+async function ghGetJsonWithSha(path) {
+  const url = ghApiBase() + path + '?ref=' + encodeURIComponent(CFG.branch);
+  const res = await fetch(url, {
+    headers: { 'Authorization': 'token ' + CFG.token, 'Accept': 'application/vnd.github+json' }
+  });
+  if (res.status === 404) return { data: null, sha: null };
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('GitHub 읽기 실패 (' + res.status + '): ' + path + '\n' + t);
+  }
+  const j = await res.json();
+  const text = base64ToUtf8(j.content);
+  return { data: JSON.parse(text), sha: j.sha };
+}
+
+// 파일 생성/수정 (커밋)
+async function ghPutJson(path, obj, message, sha) {
+  const body = {
+    message: message,
+    content: utf8ToBase64(JSON.stringify(obj)),
+    branch: CFG.branch
+  };
+  if (sha) body.sha = sha;
+
+  const res = await fetch(ghApiBase() + path, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'token ' + CFG.token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('GitHub 저장 실패 (' + res.status + '): ' + path + '\n' + t);
+  }
+  return res.json();
+}
+
+/* ===================== 앱 상태 ===================== */
+let allMembers = [];
+let selectedIds = {};
+let showAllForced = false;
+
+const FIELDS = ['사업부','소속','부서','사번','이름','근무지','재직구분','투표장소','투표구'];
+const FILTER_FIELDS = ['사업부','소속','부서','근무지','재직구분','투표장소','투표구'];
+const FILTER_SELECT_IDS = {
+  '사업부':'bizFilter','소속':'affFilter','부서':'deptFilter','근무지':'workplaceFilter',
+  '재직구분':'statusFilter','투표장소':'locationFilter','투표구':'districtFilter'
+};
+
+window.onload = function () {
+  CFG = loadConfig();
+  if (CFG) {
+    document.getElementById('loginScreen').style.display = 'none';
+    startApp();
+  }
+};
+
+async function startApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainScreen').style.display = 'block';
+  document.getElementById('repoLabel').textContent = CFG.owner + '/' + CFG.repo + ' (' + CFG.branch + ')';
+
+  try {
+    showGlobalError('');
+    document.getElementById('memberBody').innerHTML =
+      '<tr><td colspan="10" class="loading"><span class="spinner"></span>GitHub에서 명단을 불러오는 중...</td></tr>';
+
+    const text = await ghGetRaw('data/members.json');
+    allMembers = JSON.parse(text);
+
+    buildFilterOptions();
+    renderMembers();
+  } catch (err) {
+    showGlobalError(err.message + '\n\n(저장소에 data/members.json 파일이 있는지, 토큰 권한이 맞는지 확인해 주세요.)');
+    document.getElementById('memberBody').innerHTML = '<tr><td colspan="10" class="loading">불러오기 실패</td></tr>';
+  }
+}
+
+function showGlobalError(msg) {
+  const el = document.getElementById('globalError');
+  el.innerHTML = msg ? '<div class="error-box">오류: ' + escapeHtml(msg) + '</div>' : '';
+}
+function showGlobalOk(msg) {
+  const el = document.getElementById('globalOk');
+  el.innerHTML = msg ? '<div class="ok-box">' + escapeHtml(msg) + '</div>' : '';
+  if (msg) setTimeout(function () { el.innerHTML = ''; }, 4000);
+}
+
+function toggleAdmin() {
+  const p = document.getElementById('adminPanel');
+  p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+}
+
+/* ===================== 필터 ===================== */
+function buildFilterOptions() {
+  FILTER_FIELDS.forEach(function (field) {
+    const set = {};
+    allMembers.forEach(function (m) { if (m[field]) set[m[field]] = true; });
+    const values = Object.keys(set).sort(function (a, b) {
+      return String(a).localeCompare(String(b), 'ko', { numeric: true });
+    });
+    const sel = document.getElementById(FILTER_SELECT_IDS[field]);
+    values.forEach(function (v) {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function hasActiveFilter() {
+  if (document.getElementById('searchBox').value.trim()) return true;
+  return FILTER_FIELDS.some(function (f) {
+    return document.getElementById(FILTER_SELECT_IDS[f]).value;
+  });
+}
+
+function filteredMembers() {
+  const q = document.getElementById('searchBox').value.trim();
+  const filters = {};
+  FILTER_FIELDS.forEach(function (f) {
+    filters[f] = document.getElementById(FILTER_SELECT_IDS[f]).value;
+  });
+  return allMembers.filter(function (m) {
+    if (q && String(m['이름']).indexOf(q) === -1) return false;
+    for (const f of FILTER_FIELDS) {
+      if (filters[f] && String(m[f]) !== filters[f]) return false;
+    }
+    return true;
+  });
+}
+
+function forceShowAll() { showAllForced = true; renderMembers(); }
+
+function renderMembers() {
+  const body = document.getElementById('memberBody');
+
+  if (!hasActiveFilter() && !showAllForced) {
+    body.innerHTML =
+      '<tr><td colspan="10"><div class="hint-box">전체 ' + allMembers.length + '명입니다. ' +
+      '검색어를 입력하거나 위 필터를 선택해 인원을 좁혀보세요.<br>' +
+      '(전체 인원을 다 보시려면 "전체 인원 표시" 버튼을 눌러주세요.)</div></td></tr>';
+    updateSelCount();
+    return;
+  }
+
+  const list = filteredMembers();
+  if (list.length === 0) {
+    body.innerHTML = '<tr><td colspan="10" class="loading">조건에 맞는 조합원이 없습니다.</td></tr>';
+    updateSelCount();
+    return;
+  }
+
+  const rows = [];
+  list.forEach(function (m) {
+    const checked = selectedIds[m.id] ? 'checked' : '';
+    rows.push(
+      '<tr>' +
+      '<td><input type="checkbox" ' + checked + ' onchange="toggleSelect(' + m.id + ', this.checked)"></td>' +
+      '<td>' + escapeHtml(m['이름']) + '</td>' +
+      '<td>' + escapeHtml(m['사업부']) + '</td>' +
+      '<td>' + escapeHtml(m['소속']) + '</td>' +
+      '<td>' + escapeHtml(m['부서']) + '</td>' +
+      '<td>' + escapeHtml(m['사번']) + '</td>' +
+      '<td>' + escapeHtml(m['근무지']) + '</td>' +
+      '<td>' + escapeHtml(m['재직구분']) + '</td>' +
+      '<td>' + escapeHtml(m['투표장소']) + '</td>' +
+      '<td>' + escapeHtml(m['투표구']) + '</td>' +
+      '</tr>'
+    );
+  });
+  body.innerHTML = rows.join('');
+  updateSelCount();
+}
+
+function toggleSelect(id, checked) {
+  if (checked) selectedIds[id] = true; else delete selectedIds[id];
+  updateSelCount();
+}
+function selectAllVisible(select) {
+  if (!hasActiveFilter() && !showAllForced) {
+    alert('전체 선택 전에 먼저 검색어나 필터로 인원을 좁혀주세요.');
+    return;
+  }
+  filteredMembers().forEach(function (m) {
+    if (select) selectedIds[m.id] = true; else delete selectedIds[m.id];
+  });
+  renderMembers();
+}
+function updateSelCount() {
+  document.getElementById('selCount').textContent = '선택 ' + Object.keys(selectedIds).length + '명';
+}
+function getSelectedMembers() {
+  return allMembers.filter(function (m) { return selectedIds[m.id]; });
+}
+
+/* ===================== 연명부 생성 / 인쇄 / PDF ===================== */
+function buildRoster() {
+  const voteName = document.getElementById('voteName').value.trim();
+  const selected = getSelectedMembers();
+  if (!voteName) { alert('투표명을 입력해 주세요.'); return; }
+  if (selected.length === 0) { alert('연명부에 포함할 인원을 선택해 주세요.'); return; }
+
+  document.getElementById('rosterTitle').textContent = voteName + ' 투표 연명부';
+  document.getElementById('rosterMeta').textContent =
+    '생성일: ' + new Date().toLocaleDateString('ko-KR') + '   /   총 인원: ' + selected.length + '명';
+
+  const body = document.getElementById('rosterBody');
+  const rows = [];
+  selected.forEach(function (m, idx) {
+    rows.push(
+      '<tr>' +
+      '<td>' + (idx + 1) + '</td>' +
+      '<td>' + escapeHtml(m['이름']) + '</td>' +
+      '<td>' + escapeHtml(m['사업부']) + '</td>' +
+      '<td>' + escapeHtml(m['소속']) + '</td>' +
+      '<td>' + escapeHtml(m['부서']) + '</td>' +
+      '<td>' + escapeHtml(m['근무지']) + '</td>' +
+      '<td>' + escapeHtml(m['재직구분']) + '</td>' +
+      '<td>' + escapeHtml(m['투표장소']) + '</td>' +
+      '<td>' + escapeHtml(m['투표구']) + '</td>' +
+      '<td class="sign-col"></td>' +
+      '</tr>'
+    );
+  });
+  body.innerHTML = rows.join('');
+  document.getElementById('rosterArea').style.display = 'block';
+  document.getElementById('rosterArea').scrollIntoView({ behavior: 'smooth' });
+}
+
+function printRoster() { window.print(); }
+
+function downloadPdf() {
+  const voteName = document.getElementById('voteName').value.trim() || '연명부';
+  const el = document.getElementById('rosterArea');
+  const btn = document.getElementById('pdfBtn');
+  btn.disabled = true; btn.textContent = 'PDF 생성 중...';
+
+  html2pdf().set({
+    margin: 10,
+    filename: voteName + '_연명부.pdf',
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+  }).from(el).save().then(function () {
+    btn.disabled = false; btn.textContent = 'PDF 다운로드';
+  }).catch(function (err) {
+    alert('PDF 생성 중 오류: ' + err.message);
+    btn.disabled = false; btn.textContent = 'PDF 다운로드';
+  });
+}
+
+/* ===================== 투표 이력 저장 (GitHub 커밋) ===================== */
+async function saveHistory() {
+  const voteName = document.getElementById('voteName').value.trim();
+  const selected = getSelectedMembers();
+  if (!voteName || selected.length === 0) { alert('먼저 연명부를 생성해 주세요.'); return; }
+
+  const btn = document.getElementById('historyBtn');
+  btn.disabled = true; btn.textContent = '저장 중...';
+
+  try {
+    const cur = await ghGetJsonWithSha('data/history.json');
+    const history = cur.data || [];
+    history.push({
+      voteName: voteName,
+      count: selected.length,
+      names: selected.map(function (m) { return m['이름']; }).join(', '),
+      savedAt: new Date().toISOString()
+    });
+    await ghPutJson('data/history.json', history, '투표이력 추가: ' + voteName, cur.sha);
+    showGlobalOk('이력이 저장소에 저장되었습니다.');
+  } catch (err) {
+    showGlobalError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '이력 저장(GitHub)';
+  }
+}
+
+/* ===================== 엑셀 업로드 (명단 전체 교체) ===================== */
+async function handleExcelUpload() {
+  const input = document.getElementById('excelUploadInput');
+  const file = input.files[0];
+  if (!file) { alert('엑셀 파일을 선택해 주세요.'); return; }
+
+  const btn = document.getElementById('excelUploadBtn');
+  btn.disabled = true; btn.textContent = '처리 중...';
+
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+
+    const header = rows[0].map(function (h) { return String(h).trim(); });
+    const colIndex = {};
+    header.forEach(function (h, i) { colIndex[h] = i; });
+
+    const missing = FIELDS.filter(function (f) { return colIndex[f] === undefined; });
+    if (missing.length > 0) {
+      throw new Error('엑셀 1행에 다음 헤더가 없습니다: ' + missing.join(', '));
+    }
+
+    const newMembers = [];
+    let id = 1;
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const name = row[colIndex['이름']];
+      if (!name) continue;
+      const obj = { id: id++ };
+      FIELDS.forEach(function (f) { obj[f] = String(row[colIndex[f]] || '').trim(); });
+      newMembers.push(obj);
+    }
+
+    if (!confirm('현재 저장소 명단을 이 엑셀 내용(' + newMembers.length + '명)으로 완전히 덮어씁니다. 계속할까요?')) {
+      btn.disabled = false; btn.textContent = '업로드 및 저장소에 반영';
+      return;
+    }
+
+    const sha = await ghGetSha('data/members.json');
+    await ghPutJson('data/members.json', newMembers, '조합원 명단 갱신 (' + newMembers.length + '명)', sha);
+
+    allMembers = newMembers;
+    selectedIds = {};
+    ['bizFilter','affFilter','deptFilter','workplaceFilter','statusFilter','locationFilter','districtFilter']
+      .forEach(function (id) {
+        const sel = document.getElementById(id);
+        sel.innerHTML = sel.options[0].outerHTML;
+      });
+    buildFilterOptions();
+    showAllForced = false;
+    renderMembers();
+    showGlobalOk('명단이 갱신되어 저장소에 커밋되었습니다. (' + newMembers.length + '명)');
+  } catch (err) {
+    showGlobalError(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '업로드 및 저장소에 반영';
+  }
+}
+
+/* ===================== 현재 필터 결과 엑셀 다운로드 ===================== */
+function downloadFilteredExcel() {
+  const list = (hasActiveFilter() || showAllForced) ? filteredMembers() : allMembers;
+  const data = list.map(function (m) {
+    const obj = {};
+    FIELDS.forEach(function (f) { obj[f] = m[f]; });
+    return obj;
+  });
+  const ws = XLSX.utils.json_to_sheet(data, { header: FIELDS });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '명단');
+  XLSX.writeFile(wb, '조합원명단_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
+/* ===================== 유틸 ===================== */
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+</script>
+</body>
+</html>

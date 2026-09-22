@@ -155,9 +155,6 @@
       <select id="sectionFilter" onchange="renderMembers()"><option value="">전체 과</option></select>
     </div>
     <div class="controls">
-      <select id="positionFilter" onchange="renderMembers()"><option value="">전체 직위</option></select>
-      <select id="workplaceFilter" onchange="renderMembers()"><option value="">전체 근무지</option></select>
-      <select id="statusFilter" onchange="renderMembers()"><option value="">전체 재직구분</option></select>
       <select id="locationFilter" onchange="renderMembers()"><option value="">전체 투표장소</option></select>
       <select id="districtFilter" onchange="renderMembers()"><option value="">전체 투표구</option></select>
     </div>
@@ -343,10 +340,10 @@ let selectedIds = {};
 let showAllForced = false;
 
 const FIELDS = ['사업본부','부서','과','직위','사번','성명','근무지','재직구분','투표장소','투표구'];
-const FILTER_FIELDS = ['사업본부','부서','과','직위','근무지','재직구분','투표장소','투표구'];
+const FILTER_FIELDS = ['사업본부','부서','과','투표장소','투표구'];
 const FILTER_SELECT_IDS = {
-  '사업본부':'bizFilter','부서':'deptFilter','과':'sectionFilter','직위':'positionFilter','근무지':'workplaceFilter',
-  '재직구분':'statusFilter','투표장소':'locationFilter','투표구':'districtFilter'
+  '사업본부':'bizFilter','부서':'deptFilter','과':'sectionFilter',
+  '투표장소':'locationFilter','투표구':'districtFilter'
 };
 
 window.onload = function () {
